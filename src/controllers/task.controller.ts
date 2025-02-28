@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { TaskModel } from "../models/task.model.js";
 import axios from "axios"
-import {getOAuthToken} from "../utils/getOauthToken.js"
+
 
 
 export const addTask = async (req: Request, res: Response): Promise<void> => {
@@ -144,28 +144,7 @@ export const deleteTask = async (req: Request, res: Response): Promise<void> => 
          return 
     }
 };
-export const getStreamData=async (req:Request,res:Response):Promise<void>=>{
-    try {
-            
-         let oauthToken = await getOAuthToken(); 
-         
-         
-        const twitchResponse = await axios.get('https://api.twitch.tv/helix/streams', {
-          headers: {
-            'Client-ID': process.env.CLIENT_ID,
-            'Authorization': `Bearer ${oauthToken}`,
-          },
-        });
-    
-         
-         res.status(200).json(twitchResponse.data);
-         return 
-      } catch (error) {
-        console.error('Error fetching live streams:', error);
-         res.status(500).json({ message: 'Failed to fetch live streams data' });
-         return 
-      }
-}
+
 
 export const updateCategory= async(req:Request,res:Response):Promise<void>=>{
     const taskId = req.params.id
@@ -188,5 +167,52 @@ export const updateCategory= async(req:Request,res:Response):Promise<void>=>{
 
         res.status(500).json({ message: "An unknown error occurred." });
         return 
+    }
+}
+
+
+
+export const getStreamData = async (req: Request, res: Response): Promise<void> => {
+    try {
+        
+        const tasks = await TaskModel.find({});
+        if (!tasks.length) {
+            res.status(404).json({ message: "No tasks found." });
+            return;
+        }
+
+       
+        const taskTitles = tasks.map(task => task.title);
+ 
+       
+        const apiKey = process.env.YOUTUBE_API_KEY;
+        if (!apiKey) {
+            res.status(500).json({ message: "YouTube API Key is missing" });
+            return;
+        }
+
+       
+        const youtubeStreamsPromises = taskTitles.map(async (title) => {
+            const response = await axios.get(`https://www.googleapis.com/youtube/v3/search`, {
+                params: {
+                    part: 'snippet',
+                    q: title,  
+                    type: 'video',
+                    eventType: 'live',
+                    maxResults: 1, 
+                    key: apiKey,
+                }
+            });
+            return { title, streams: response.data.items || [] };
+        });
+
+        
+        const tasksWithStreams = await Promise.all(youtubeStreamsPromises);
+
+    
+        res.status(200).json({ tasksWithStreams });
+    } catch (error) {
+        console.error("Error fetching tasks with YouTube streams:", error);
+        res.status(500).json({ message: "Failed to fetch tasks with YouTube streams." });
     }
 }
